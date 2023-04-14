@@ -3,6 +3,7 @@ package validation_tests
 import (
 	"context"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	goclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	ptpv1 "github.com/openshift/ptp-operator/api/v1"
 	testutils "github.com/openshift/ptp-operator/test/pkg"
 	testclient "github.com/openshift/ptp-operator/test/pkg/client"
 	"github.com/openshift/ptp-operator/test/pkg/ptphelper"
@@ -65,6 +67,86 @@ var _ = Describe("validation", func() {
 
 			err = testclient.Client.Get(context.TODO(), goclient.ObjectKey{Name: testutils.PtpOperatorConfigsCRD}, crd)
 			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("should be able to set nodeSelector", func() {
+			ptpConfig, err := testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Set nodeSelector to {}")
+			nodeEmpty := make(map[string]string)
+			ptpConfig.Spec.DaemonNodeSelector = nodeEmpty
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ptpConfig.Spec.DaemonNodeSelector).Should(Equal(nodeEmpty), "empty")
+
+			By("Set nodeSelector to {foo: bar}")
+			nodeSelected := map[string]string{"foo": "bar"}
+			ptpConfig.Spec.DaemonNodeSelector = nodeSelected
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			ptpConfig, err = testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ptpConfig.Spec.DaemonNodeSelector).Should(Equal(nodeSelected), "foobar")
+
+			By("Set nodeSelector back to {}")
+			ptpConfig, err = testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			ptpConfig.Spec.DaemonNodeSelector = nodeEmpty
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ptpConfig.Spec.DaemonNodeSelector).Should(Equal(nodeEmpty), "empty")
+		})
+
+		It("should reject event config", func() {
+			By("If TransportHost and storageType are not set")
+
+			// wait for k8s to refresh
+			time.Sleep(2 * time.Second)
+
+			ptpConfig, err := testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			ptpConfig.Spec.EventConfig = &ptpv1.PtpEventConfig{
+				EnableEventPublisher: true,
+			}
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("storageType must be set")))
+		})
+
+		It("should reject event config", func() {
+			By("If TransportHost not set and StorageType are invalid")
+
+			// wait for k8s to refresh
+			time.Sleep(2 * time.Second)
+
+			invalidStorageClass := "_invalid_storage_class"
+			ptpConfig, err := testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			ptpConfig.Spec.EventConfig = &ptpv1.PtpEventConfig{
+				EnableEventPublisher: true,
+				StorageType:          invalidStorageClass,
+			}
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("storageType is set to StorageClass " + invalidStorageClass + " which does not exist")))
+		})
+
+		It("should reject event config", func() {
+			By("If TransportHost is http and storageType are not set")
+
+			// wait for k8s to refresh
+			time.Sleep(2 * time.Second)
+
+			ptpConfig, err := testclient.Client.PtpV1Interface.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Get(context.Background(), testutils.PtpConfigOperatorName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			ptpConfig.Spec.EventConfig = &ptpv1.PtpEventConfig{
+				EnableEventPublisher: true,
+				TransportHost:        "http://mock",
+			}
+			_, err = testclient.Client.PtpOperatorConfigs(testutils.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}})
+			Expect(err).Should(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("storageType must be set")))
 		})
 	})
 })
