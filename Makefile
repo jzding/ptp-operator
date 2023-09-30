@@ -36,7 +36,7 @@ IMAGE_TAG_BASE ?= openshift.io/ptp-operator
 BUNDLE_IMG ?= $(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/openshift/origin-ptp-operator:$(VERSION)
+IMG ?= quay.io/jacding/ptp-operator:$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
