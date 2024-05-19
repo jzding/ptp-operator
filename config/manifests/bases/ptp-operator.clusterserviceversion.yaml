@@ -97,6 +97,15 @@ spec:
       kind: PtpOperatorConfig
       name: ptpoperatorconfigs.ptp.openshift.io
       specDescriptors:
+      - description: 'ApiVersion is used to determine which API is used for the event
+          service ptp-event-publisher-service-NODE_NAME ApiVersion 1.0 is default
+          if not specified. The event service is mapped to internal API of HTTP transport.
+          ApiVersion 2.0: event service is mapped to O-RAN Compliant O-Cloud Notification
+          REST-API.'
+        displayName: ApiVersion
+        path: ptpEventConfig.apiVersion
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:text
       - description: StorageType is the name of StorageClass providing persist storage
           used by HTTP transport to store subscription data
         displayName: Storage Type

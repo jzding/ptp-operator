@@ -50,6 +50,14 @@ spec:
               ptpEventConfig:
                 description: EventConfig to configure event sidecar
                 properties:
+                  apiVersion:
+                    description: 'ApiVersion is used to determine which API is used
+                      for the event service ptp-event-publisher-service-NODE_NAME
+                      ApiVersion 1.0 is default if not specified. The event service
+                      is mapped to internal API of HTTP transport. ApiVersion 2.0:
+                      event service is mapped to O-RAN Compliant O-Cloud Notification
+                      REST-API.'
+                    type: string
                   enableEventPublisher:
                     default: false
                     description: EnableEventPublisher will deploy event proxy as a

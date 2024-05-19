@@ -76,6 +76,11 @@ type PtpEventConfig struct {
 	// StorageType is the name of StorageClass providing persist storage used by HTTP transport to store subscription data
 	//+operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Storage Type",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
 	StorageType string `json:"storageType,omitempty"`
+	// ApiVersion is used to determine which API is used for the event service ptp-event-publisher-service-NODE_NAME
+	// ApiVersion 1.0 is default if not specified. The event service is mapped to internal API of HTTP transport.
+	// ApiVersion 2.0: event service is mapped to O-RAN Compliant O-Cloud Notification REST-API.
+	//+operator-sdk:csv:customresourcedefinitions:type=spec,displayName="ApiVersion",xDescriptors={"urn:alm:descriptor:com.tectonic.ui:text"}
+	ApiVersion string `json:"apiVersion,omitempty"`
 }
 
 func init() {

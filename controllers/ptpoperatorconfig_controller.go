@@ -74,6 +74,7 @@ const (
 	AmqDefaultHost            = AmqScheme + "://" + AmqDefaultHostName
 	DefaultTransportHost      = "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
 	DefaultStorageType        = "emptyDir"
+	DefaultApiVersion         = "1.0"
 	PVCNamePrefix             = "cloud-event-proxy-store"
 )
 
@@ -260,6 +261,7 @@ func (r *PtpOperatorConfigReconciler) syncLinuxptpDaemon(ctx context.Context, de
 	data.Data["SideCar"] = os.Getenv("SIDECAR_EVENT_IMAGE")
 	data.Data["NodeName"] = os.Getenv("NODE_NAME")
 	data.Data["StorageType"] = DefaultStorageType
+	data.Data["EventApiVersion"] = DefaultApiVersion
 	// configure EventConfig
 	if defaultCfg.Spec.EventConfig == nil {
 		data.Data["EnableEventPublisher"] = false
@@ -275,6 +277,9 @@ func (r *PtpOperatorConfigReconciler) syncLinuxptpDaemon(ctx context.Context, de
 			data.Data["EventTransportHost"] = transportHost
 			if defaultCfg.Spec.EventConfig.StorageType != "" {
 				data.Data["StorageType"] = defaultCfg.Spec.EventConfig.StorageType
+			}
+			if defaultCfg.Spec.EventConfig.ApiVersion != "" {
+				data.Data["EventApiVersion"] = defaultCfg.Spec.EventConfig.ApiVersion
 			}
 		}
 	}
