@@ -85,7 +85,7 @@ const (
 
 func (r *PtpOperatorConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (reconcile.Result, error) {
 	reqLogger := r.Log.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
-	reqLogger.Info("Reconciling PtpOperatorConfig")
+	reqLogger.Info("[dev-ci] *** I'm in dev-branch-for-ptp-fix branch *** Reconciling PtpOperatorConfig")
 
 	// Fetch the PtpOperatorConfig instance
 	defaultCfg := &ptpv1.PtpOperatorConfig{}
