@@ -111,7 +111,7 @@ func CreateEventProxySidecar(nodeNameFull string) (err error) {
 				},
 				{Name: ConsumerContainerName,
 					//Image: "quay.io/deliedit/test:cep5",
-					Image: "quay.io/redhat-cne/cloud-event-consumer:latest",
+					Image: "quay.io/jacding/cloud-event-consumer:sub3",
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: pointer.Bool(true),
 						RunAsUser:  rootUser,
@@ -418,7 +418,10 @@ func PushInitialEvent(eventType string, timeout time.Duration) (err error) {
 			matches := r.FindAllStringSubmatch(line, -1)
 			if len(matches) > 0 {
 				aStoredEvent, eType, err := createStoredEvent([]byte(matches[0][1]))
-				if err == nil && eType == eventType {
+				if err != nil {
+					return err
+				}
+				if eType == eventType {
 					PubSub.Publish(eType, aStoredEvent)
 					return nil
 				}
