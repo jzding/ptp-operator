@@ -111,7 +111,7 @@ func CreateEventProxySidecar(nodeNameFull string) (err error) {
 				},
 				{Name: ConsumerContainerName,
 					//Image: "quay.io/deliedit/test:cep5",
-					Image: "quay.io/redhat-cne/cloud-event-consumer:latest",
+					Image: "quay.io/jacding/cloud-event-consumer:4.17",
 					SecurityContext: &corev1.SecurityContext{
 						Privileged: pointer.Bool(true),
 						RunAsUser:  rootUser,
