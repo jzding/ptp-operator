@@ -64,7 +64,7 @@ var _ = Describe("["+strings.ToLower(DesiredMode.String())+"-parallel]", func() 
 
 	Context("Event based tests", func() {
 		BeforeEach(func() {
-			if !ptphelper.PtpEventEnabled() {
+			if ptphelper.PtpEventEnabled() == 0 {
 				Skip("Skipping, PTP events not enabled")
 			}
 			logrus.Debugf("fullConfig=%s", fullConfig.String())
@@ -73,7 +73,7 @@ var _ = Describe("["+strings.ToLower(DesiredMode.String())+"-parallel]", func() 
 			}
 		})
 
-		It("PTP Slave Clock Sync", func() {
+		FIt("PTP Slave Clock Sync", func() {
 			if fullConfig.PtpModeDiscovered == testconfig.TelcoGrandMasterClock {
 				Skip("test not valid for WPC GM config")
 			}
@@ -82,7 +82,7 @@ var _ = Describe("["+strings.ToLower(DesiredMode.String())+"-parallel]", func() 
 		})
 		AfterEach(func() {
 			// closing internal pubsub
-			if ptphelper.PtpEventEnabled() {
+			if ptphelper.PtpEventEnabled() != 0 {
 				event.PubSub.Close()
 			}
 

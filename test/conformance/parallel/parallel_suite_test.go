@@ -63,18 +63,23 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	ptphelper.RestartPTPDaemon()
 
 	isSideCarReady := true
-	err = event.CreateEventProxySidecar(fullConfig.DiscoveredClockUnderTestPod.Spec.NodeName)
-	if err != nil {
-		logrus.Errorf("PTP events are not available due to Sidecar creation error err=%s", err)
-		isSideCarReady = false
+	apiVersion := ptphelper.PtpEventEnabled()
+	if apiVersion == 1 {
+		err = event.CreateEventProxySidecar(fullConfig.DiscoveredClockUnderTestPod.Spec.NodeName)
+		if err != nil {
+			logrus.Errorf("PTP events are not available due to Sidecar creation error err=%s", err)
+			isSideCarReady = false
+		}
 	}
 	// stops the event listening framework
 	DeferCleanup(func() {
 
 		//delete the sidecar
-		err = event.DeleteTestSidecarNamespace()
-		if err != nil {
-			logrus.Debugf("Deleting test sidecar failed because of err=%s", err)
+		if apiVersion == 1 {
+			err = event.DeleteTestSidecarNamespace()
+			if err != nil {
+				logrus.Debugf("Deleting test sidecar failed because of err=%s", err)
+			}
 		}
 	})
 

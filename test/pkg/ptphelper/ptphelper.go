@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -450,25 +451,46 @@ func EnablePTPEvent() error {
 	if ptpConfig.Spec.EventConfig == nil {
 		ptpConfig.Spec.EventConfig = &ptpv1.PtpEventConfig{
 			EnableEventPublisher: true,
-			TransportHost:        "http://mock",
 		}
-	}
-	if ptpConfig.Spec.EventConfig.TransportHost == "" {
-		ptpConfig.Spec.EventConfig.TransportHost = "http://mock"
 	}
 
 	ptpConfig.Spec.EventConfig.EnableEventPublisher = true
+	if getDefaultApiVersion() == 2 {
+		ptpConfig.Spec.EventConfig.ApiVersion = "2.0"
+	}
 	_, err = client.Client.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
 	return err
 }
 
-func PtpEventEnabled() bool {
+func EnablePTPEventV1() error {
 	ptpConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	if ptpConfig.Spec.EventConfig == nil {
-		return false
+		ptpConfig.Spec.EventConfig = &ptpv1.PtpEventConfig{
+			EnableEventPublisher: true,
+		}
 	}
-	return ptpConfig.Spec.EventConfig.EnableEventPublisher
+
+	ptpConfig.Spec.EventConfig.EnableEventPublisher = true
+	ptpConfig.Spec.EventConfig.ApiVersion = "1.0"
+	_, err = client.Client.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
+	return err
+}
+
+// PtpEventEnabled returns 0 if event is not enabled, 1 for v1 API, 2 for v2 O-RAN Compliant API
+func PtpEventEnabled() int {
+	ptpConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	if ptpConfig.Spec.EventConfig == nil {
+		return 0
+	}
+	if !ptpConfig.Spec.EventConfig.EnableEventPublisher {
+		return 0
+	}
+	if IsV1Api(ptpConfig.Spec.EventConfig.ApiVersion) {
+		return 1
+	}
+	return 2
 }
 
 func EnablePTPReferencePlugin() error {
@@ -774,4 +796,53 @@ func execPodCommand(nodeName string, cmd []string) (stdoutBuf, stderrBuf bytes.B
 		logrus.Errorf("Could not run command %s on pod because of err: %s \n stderr: %s", cmd, err, se.String())
 	}
 	return so, se, err
+}
+
+// GetMajorVersion returns major version
+func GetMajorVersion(version string) (int, error) {
+	if version == "" {
+		return 1, nil
+	}
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "V")
+	v := strings.Split(version, ".")
+	majorVersion, err := strconv.Atoi(v[0])
+	if err != nil {
+		logrus.Errorf("Error parsing major version from %s, %v", version, err)
+		return 1, err
+	}
+	return majorVersion, nil
+}
+
+// IsV1Api ...
+func IsV1Api(version string) bool {
+	if majorVersion, err := GetMajorVersion(version); err == nil {
+		if majorVersion >= 2 {
+			return false
+		}
+	}
+	// by default use V1
+	return true
+}
+
+// IsV1RegressionNeeded returns true when testing 4.16 and 4.17 PUT.
+// for 4.16 and 4.17 we need to support both v1 and v2 event API
+func IsV1EventRegressionNeeded() bool {
+	value, isSet := os.LookupEnv("T5CI_VERSION")
+	logrus.Infof("DZK isSet=%t T5CI_VERSION=%s", isSet, value)
+	if isSet && (value == "4.16" || value == "4.17") {
+		return true
+	}
+	return false
+}
+
+// IsDualApiVersionTestNeeded returns true when testing 4.16 and 4.17 PUT
+// for 4.16 and 4.17 we need to support both v1 and v2 event API
+func getDefaultApiVersion() int {
+	value, isSet := os.LookupEnv("T5CI_VERSION")
+	logrus.Infof("DZK isSet=%t T5CI_VERSION=%s", isSet, value)
+	if isSet && (strings.Compare(value, "4.16") < 0) {
+		return 1
+	}
+	return 2
 }
