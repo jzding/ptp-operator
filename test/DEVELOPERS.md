@@ -709,14 +709,14 @@ type TestConfig struct {
 	DiscoveredClockUnderTestPod *v1core.Pod
 	L2Config                    l2lib.L2Info
 	FoundSolutions              map[string]bool
-	PtpEventsIsSidecarReady     bool
+	PtpEventsIsConsumerReady     bool
 }
 ```
 Note that the following objects are only updated if L2 discovery was executed in the same process. In parallel tests, the L2 topology will only be available in one test case, so it should not be relied upon:
 ```
 	L2Config                    l2lib.L2Info
 	FoundSolutions              map[string]bool
-	PtpEventsIsSidecarReady     bool
+	PtpEventsIsConsumerReady     bool
 ```
 This information is updated only once in the parallel test suite in the `SynchronizedBeforeSuite` function. The `SynchronizedBeforeSuite` function runs in a single process before any test case starts. It is responsible for creating all the PTP objects required by the test setup such as the ptpconfigs and the ptp events sidecar pod (describe later).
 This same process is then used to run a single test.
