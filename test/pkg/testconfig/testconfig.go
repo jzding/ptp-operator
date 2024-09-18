@@ -107,7 +107,7 @@ type TestConfig struct {
 	DiscoveredClockUnderTestPod *v1core.Pod
 	L2Config                    l2lib.L2Info
 	FoundSolutions              map[string]bool
-	PtpEventsIsSidecarReady     bool
+	PtpEventsIsConsumerReady    bool
 	PtpEventApiVersion          int
 }
 type solverData struct {
@@ -193,7 +193,7 @@ func (obj *TestConfig) String() (out string) {
 	if obj == nil {
 		return "nil"
 	}
-	out += fmt.Sprintf("PtpModeDesired= %s, PtpModeDiscovered= %s, Status= %s, DiscoveredClockUnderTestPtpConfig= %s, DiscoveredClockUnderTestSecondaryPtpConfig= %s, DiscoveredGrandMasterPtpConfig= %s, DiscoveredSlave1PtpConfig= %s, DiscoveredSlave2PtpConfig= %s, PtpEventsIsSidecarReady= %t, ",
+	out += fmt.Sprintf("PtpModeDesired= %s, PtpModeDiscovered= %s, Status= %s, DiscoveredClockUnderTestPtpConfig= %s, DiscoveredClockUnderTestSecondaryPtpConfig= %s, DiscoveredGrandMasterPtpConfig= %s, DiscoveredSlave1PtpConfig= %s, DiscoveredSlave2PtpConfig= %s, PtpEventsIsConsumerReady= %t, ",
 		obj.PtpModeDesired,
 		obj.PtpModeDiscovered,
 		obj.Status,
@@ -202,7 +202,7 @@ func (obj *TestConfig) String() (out string) {
 		obj.DiscoveredGrandMasterPtpConfig,
 		obj.DiscoveredSlave1PtpConfig,
 		obj.DiscoveredSlave2PtpConfig,
-		obj.PtpEventsIsSidecarReady)
+		obj.PtpEventsIsConsumerReady)
 	if obj.DiscoveredClockUnderTestPod != nil {
 		out += fmt.Sprintf("DiscoveredClockUnderTestPodName=%s, DiscoveredClockUnderTestNodeName=%s",
 			obj.DiscoveredClockUnderTestPod.Name,

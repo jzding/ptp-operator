@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/creasty/defaults v1.6.0
 	github.com/go-logr/logr v1.2.4
 	github.com/golang/glog v1.0.0
@@ -17,7 +18,7 @@ require (
 	github.com/prometheus/common v0.44.0
 	github.com/redhat-cne/channel-pubsub v0.0.8
 	github.com/redhat-cne/ptp-listener-exports v0.0.7
-	github.com/redhat-cne/sdk-go v1.0.1-0.20240716153735-19a18fd38ee6
+	github.com/redhat-cne/sdk-go v1.22.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.2
 	github.com/test-network-function/graphsolver-lib v0.0.3
@@ -39,7 +40,6 @@ require (
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/cloudevents/sdk-go/v2 v2.15.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect

@@ -56,7 +56,8 @@ var _ = Describe("["+strings.ToLower(DesiredMode.String())+"-serial]", Serial, f
 		It("Should check whether PTP operator needs to enable PTP events", func() {
 			By("Find if variable set to enable ptp events")
 			if event.Enable() {
-				Expect(ptphelper.EnablePTPEvent()).NotTo(HaveOccurred())
+				_, err := ptphelper.EnablePTPEvent()
+				Expect(err).To(BeNil(), "error when enable ptp event")
 				ptpConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ptpConfig.Spec.EventConfig.EnableEventPublisher).Should(BeTrue(), "failed to enable ptp event")

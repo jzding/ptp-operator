@@ -445,7 +445,8 @@ func DiscoveryPTPConfiguration(namespace string) (masters, slaves []*ptpv1.PtpCo
 	return masters, slaves
 }
 
-func EnablePTPEvent() error {
+// EnablePTPEvent returns apiVersion. If there is error then apiVersion returns 0.
+func EnablePTPEvent() (int, error) {
 	ptpConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	if ptpConfig.Spec.EventConfig == nil {
@@ -455,11 +456,15 @@ func EnablePTPEvent() error {
 	}
 
 	ptpConfig.Spec.EventConfig.EnableEventPublisher = true
-	if getDefaultApiVersion() == 2 {
+	apiVersion := getDefaultApiVersion()
+	if apiVersion == 2 {
 		ptpConfig.Spec.EventConfig.ApiVersion = "2.0"
 	}
 	_, err = client.Client.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Update(context.Background(), ptpConfig, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return apiVersion, nil
 }
 
 func EnablePTPEventV1() error {
@@ -829,19 +834,21 @@ func IsV1Api(version string) bool {
 // for 4.16 and 4.17 we need to support both v1 and v2 event API
 func IsV1EventRegressionNeeded() bool {
 	value, isSet := os.LookupEnv("T5CI_VERSION")
-	logrus.Infof("DZK isSet=%t T5CI_VERSION=%s", isSet, value)
-	if isSet && (value == "4.16" || value == "4.17") {
+	//TODOv2 update after backport v2 to 4.16
+	//if isSet && (value == "4.16" || value == "4.17") {
+	if isSet && value == "4.17" {
 		return true
 	}
 	return false
 }
 
-// IsDualApiVersionTestNeeded returns true when testing 4.16 and 4.17 PUT
-// for 4.16 and 4.17 we need to support both v1 and v2 event API
+// default version for 4.16+ is 2
+// default version for 4.15 and less is 1
 func getDefaultApiVersion() int {
 	value, isSet := os.LookupEnv("T5CI_VERSION")
-	logrus.Infof("DZK isSet=%t T5CI_VERSION=%s", isSet, value)
-	if isSet && (strings.Compare(value, "4.16") < 0) {
+	//TODOv2 update after backport v2 to 4.16
+	// if isSet && (strings.Compare(value, "4.16") < 0) {
+	if isSet && (strings.Compare(value, "4.17") < 0) {
 		return 1
 	}
 	return 2
