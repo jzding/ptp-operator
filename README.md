@@ -3,6 +3,8 @@
 
 - [PTP Operator](#ptp-operator)
 - [PtpOperatorConfig](#ptpoperatorconfig)
+  - [Enable PTP events via fast event framework](#enable-ptp-events-via-fast-event-framework)
+  - [Authentication for PTP Event Publisher](#authentication-for-ptp-event-publisher)
 - [PtpConfig](#ptpconfig)
 - [Quick Start](#quick-start)
 
@@ -34,10 +36,51 @@ metadata:
   resourceVersion: ""
   selfLink: ""
 ```
-### Enable PTP events via fast event framework 
+### Enable PTP events via fast event framework
 PTP Operator supports fast event publisher for events such as PTP state change, os clock out of sync, clock class change and port failure.
 Event publisher is enabled by deploying PTP operator with [cloud events framework](https://github.com/redhat-cne/cloud-event-proxy) (based on O-RAN API specifications).
 The events are published via HTTP or AMQP transport and available for local subscribers.
+
+#### Authentication for PTP Event Publisher
+
+The PTP Event Publisher supports enterprise-grade authentication with **strict security validation** for secure event communication:
+
+- **mTLS (Mutual TLS)**: Transport layer security with client certificate authentication
+- **OAuth**: Application layer authentication using JWT tokens with **strict validation**
+- **OpenShift Integration**: Native support for OpenShift Service CA and OAuth server
+- **Security**: No authentication bypass mechanisms, tokens must match exact issuer
+
+For detailed authentication setup instructions, see:
+- **[Authentication Setup Guide](bindata/linuxptp/README.md)** - Complete setup using OpenShift's built-in Service CA and OAuth server
+
+The authentication is automatically configured when `EnableEventPublisher` is set to `true` in the PtpOperatorConfig.
+
+**Note**: For proper OAuth configuration, set the `CLUSTER_NAME` environment variable in the operator deployment to match your cluster's domain name. See the authentication guide for details.
+
+#### Recent Security Improvements
+
+- **Fixed OAuth Security Vulnerability**: Implemented strict OAuth token validation to prevent unauthorized access
+- **Enhanced Issuer Validation**: Token issuer must exactly match the configured OAuth issuer
+- **Comprehensive Token Validation**: Expiration, audience, and signature verification
+- **Dynamic Cluster Support**: `CLUSTER_NAME` environment variable for flexible deployment across different clusters
+
+#### Runtime Cluster Configuration
+
+For deployments where the cluster name needs to be updated after initial deployment:
+
+```bash
+# Update cluster name to match your actual OpenShift cluster
+oc set env deployment/ptp-operator -n openshift-ptp CLUSTER_NAME=your-cluster.example.com
+
+# Wait for operator restart
+oc rollout status deployment/ptp-operator -n openshift-ptp
+
+# Verify authentication resources are updated
+oc get configmap cluster-info -n openshift-ptp -o jsonpath='{.data.cluster-name}'
+oc get configmap ptp-event-publisher-auth -n openshift-ptp -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
+```
+
+The operator automatically updates all authentication ConfigMaps and OAuth URLs when the `CLUSTER_NAME` environment variable is changed.
 
 #### Enabling fast events
 ```
@@ -69,18 +112,18 @@ metadata:
 ```
 ## PtpConfig
 
-`PtpConfig` CRD is used to define linuxptp configurations and to which node these 
-linuxptp configurations shall be applied. 
-The Spec of CR has two major sections. 
+`PtpConfig` CRD is used to define linuxptp configurations and to which node these
+linuxptp configurations shall be applied.
+The Spec of CR has two major sections.
 The first section `profile` contains `interface`, `ptp4lOpts`, `phc2sysOpts` and `ptp4lConf` options,
 the second `recommend` defines profile selection logic.
 ```
  PTP operator supports T-BC and Ordinary clock which can be configured via ptpConfig
 ```
 ### ptpConfig to set up ordinary clock using single interface
-``` 
-NOTE: following ptp4l/phc2sys opts required when events are enabled 
-    ptp4lOpts: "-2 -s --summary_interval -4" 
+```
+NOTE: following ptp4l/phc2sys opts required when events are enabled
+    ptp4lOpts: "-2 -s --summary_interval -4"
     phc2sysOpts: "-a -r -m -n 24 -N 8 -R 16"
 ```
 ```
@@ -102,9 +145,9 @@ spec:
     - nodeLabel: "node-role.kubernetes.io/worker"
 ```
 ### ptpConfig to set up boundary clock using multiple interface
-``` 
-NOTE: following ptp4l/phc2sys opts required when events are enabled 
-    ptp4lOpts: "-2 --summary_interval -4" 
+```
+NOTE: following ptp4l/phc2sys opts required when events are enabled
+    ptp4lOpts: "-2 --summary_interval -4"
     phc2sysOpts: "-a -r -m -n 24 -N 8 -R 16"
 ```
 ```
@@ -143,7 +186,7 @@ spec:
   - name: "profile1"
     ...
     ...
-    ......   
+    ......
     ptpClockThreshold:
       holdOverTimeout: 24 # in secs
       maxOffsetThreshold: 100 #in nano secs
@@ -153,7 +196,7 @@ spec:
     priority: 4
     match:
     - nodeLabel: "node-role.kubernetes.io/worker"
-    
+
 ```
 ### ptpConfig to filter 'master offset' and 'delay   filtered' logs
 ```
@@ -167,7 +210,7 @@ spec:
   - name: "profile1"
     ...
     ...
-    ......   
+    ......
     ptpSettings:
       stdoutFilter: "^.*delay   filtered.*$"
       logReduce: "true"
@@ -176,7 +219,7 @@ spec:
     priority: 4
     match:
     - nodeLabel: "node-role.kubernetes.io/worker"
-    
+
 ```
 ### ptpConfig to configure as WPC NIC as GM
 ```
@@ -190,7 +233,7 @@ spec:
   - name: "profile1"
     ...
     ...
-    ......   
+    ......
     plugins:
       e810:
         enableDefaultConfig: true
@@ -223,7 +266,7 @@ spec:
      network_option 2
      extended_tlv 1
      recover_time 60
-     clock_id 
+     clock_id
      module_name ice
 
      [enp59s0f0np0]
@@ -240,7 +283,7 @@ spec:
     priority: 4
     match:
     - nodeLabel: "node-role.kubernetes.io/worker"
-    
+
 ```
 
 In above examples, `profile1` will be applied by `linuxptp-daemon` to nodes labeled with `node-role.kubernetes.io/worker`.
@@ -248,7 +291,7 @@ In above examples, `profile1` will be applied by `linuxptp-daemon` to nodes labe
 `xxx-ptpconfig` CR is created with `PtpConfig` kind. `spec.profile` defines profile named `profile1` which contains `interface (enp134s0f0)` to run ptp4l process on, `ptp4lOpts (-s -2)` sysconfig options to run ptp4l process with and `phc2sysOpts (-a -r)` to run phc2sys process with. `spec.recommend` defines `priority` (lower numbers mean higher priority, 0 is the highest priority) and `match` rules of profile `profile1`. `priority` is useful when there are multiple `PtpConfig` CRs defined, linuxptp daemon applies `match` rules against node labels and names from high priority to low priority in order. If any of `nodeLabel` or `nodeName` on a specific node matches with the node label or name where daemon runs, it applies profile on that node.
 
 #### Automatic leap second file management
-The T-GM system depends on having the most recent leap second information. This data comes in a file that shows the difference in seconds between Coordinated Universal Time (UTC) and International Atomic Time (TAI). This file is regularly updated by the International Earth Rotation and Reference Systems Service (IERS). 
+The T-GM system depends on having the most recent leap second information. This data comes in a file that shows the difference in seconds between Coordinated Universal Time (UTC) and International Atomic Time (TAI). This file is regularly updated by the International Earth Rotation and Reference Systems Service (IERS).
 The latest leap seconds file can be downloaded from https://hpiers.obspm.fr/iers/bul/bulc/ntp/leap-seconds.list.
 While the PTP operator container image includes the latest leap second information at build time, the system can automatically update the leap second file using announcements received through GPS to ensure it stays current.
 
