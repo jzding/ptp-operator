@@ -37,12 +37,16 @@ data:
   config.json: |
     {
       "enableMTLS": true,
+      "useServiceCA": true,
       "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
-      "serverCertPath": "/etc/cloud-event-proxy/certs/tls.crt",
-      "serverKeyPath": "/etc/cloud-event-proxy/certs/tls.key",
+      "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
+      "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
       "enableOAuth": true,
-      "oauthIssuer": "https://kubernetes.default.svc",
-      "oauthJWKSURL": "https://kubernetes.default.svc/.well-known/openid-configuration",
-      "requiredScopes": ["cloud-event-proxy"],
-      "requiredAudience": "cloud-event-proxy"
+      "useOpenShiftOAuth": true,
+      "oauthIssuer": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com",
+      "oauthJWKSURL": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com/oauth/jwks",
+      "requiredScopes": ["user:info"],
+      "requiredAudience": "openshift",
+      "serviceAccountName": "cloud-event-proxy-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
     }

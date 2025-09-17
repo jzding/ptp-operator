@@ -1,12 +1,12 @@
 # PTP Event Publisher Authentication
 
-This document describes the authentication setup for the PTP Event Publisher service in the linuxptp-daemon.
+This document describes the authentication setup for the PTP Event Publisher service in the linuxptp-daemon using OpenShift's built-in components. This unified approach works seamlessly for both single node and multi-node OpenShift clusters.
 
 ## Overview
 
 The PTP Event Publisher service uses two authentication mechanisms:
-1. mTLS (Mutual TLS) for transport security
-2. OAuth with Service Account tokens for client authentication
+1. mTLS (Mutual TLS) using OpenShift Service CA for transport security
+2. OAuth with Service Account tokens using OpenShift's built-in OAuth server for client authentication
 
 ## Components
 

@@ -161,3 +161,4 @@ roleRef:
   kind: ClusterRole
   name: cloud-event-proxy-cert-manager-{{.NodeName}}
   apiGroup: rbac.authorization.k8s.io
+

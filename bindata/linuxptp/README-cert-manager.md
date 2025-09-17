@@ -275,3 +275,4 @@ If migrating from OpenShift Service CA to cert-manager:
    - Document certificate rotation procedures
    - Create incident response plans
    - Regular security audits
+
