@@ -74,6 +74,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-info
+                  key: cluster-name
             - name: NAME_SPACE
               value: openshift-ptp
         {{ end }}

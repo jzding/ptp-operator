@@ -63,8 +63,8 @@ The authentication configuration is stored in a ConfigMap:
   "certManagerIssuer": "openshift-cluster-issuer",
   "certManagerNamespace": "openshift-ptp",
   "enableOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.openshift.example.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.openshift.example.com/.well-known/openid_configuration",
+  "oauthIssuer": "https://oauth-openshift.apps.{{.ClusterName}}",
+  "oauthJWKSURL": "https://oauth-openshift.apps.{{.ClusterName}}/oauth/jwks",
   "requiredScopes": ["user:info", "user:check-access"],
   "requiredAudience": "openshift",
   "serviceAccountName": "cloud-event-proxy-client",
@@ -275,4 +275,3 @@ If migrating from OpenShift Service CA to cert-manager:
    - Document certificate rotation procedures
    - Create incident response plans
    - Regular security audits
-

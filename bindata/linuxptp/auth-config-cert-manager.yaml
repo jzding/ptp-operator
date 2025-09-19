@@ -1,3 +1,12 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-info
+  namespace: openshift-ptp
+data:
+  cluster-name: "{{.ClusterName}}"
+---
 # cert-manager Certificate for mTLS server certificates
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -77,8 +86,8 @@ data:
       "certManagerIssuer": "openshift-cluster-issuer",
       "certManagerNamespace": "openshift-ptp",
       "enableOAuth": true,
-      "oauthIssuer": "https://oauth-openshift.apps.openshift.example.com",
-      "oauthJWKSURL": "https://oauth-openshift.apps.openshift.example.com/.well-known/openid_configuration",
+      "oauthIssuer": "https://oauth-openshift.apps.{{.ClusterName}}",
+      "oauthJWKSURL": "https://oauth-openshift.apps.{{.ClusterName}}/oauth/jwks",
       "requiredScopes": ["user:info", "user:check-access"],
       "requiredAudience": "openshift",
       "serviceAccountName": "cloud-event-proxy-client",
@@ -161,4 +170,3 @@ roleRef:
   kind: ClusterRole
   name: cloud-event-proxy-cert-manager-{{.NodeName}}
   apiGroup: rbac.authorization.k8s.io
-
