@@ -40,7 +40,7 @@ spec:
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host={{ .EventTransportHost }}"
+            - "--transport-host=http://ptp-event-publisher-service-$(NODE_NAME).openshift-ptp.svc.cluster.local:9043"
             - "--api-version={{ .EventApiVersion }}"
             - "--api-port=9043"
             - "--auth-config=/etc/cloud-event-proxy/auth/config.json"
@@ -166,13 +166,13 @@ spec:
           emptyDir: {}
         - name: server-certs
           secret:
-            secretName: cloud-event-proxy-mtls-tls-{{.NodeName}}
+            secretName: cloud-event-proxy-mtls-tls
         - name: ca-bundle
           secret:
-            secretName: cloud-event-proxy-ca-tls-{{.NodeName}}
+            secretName: cloud-event-proxy-ca-tls
         - name: auth-config
           configMap:
-            name: ptp-event-publisher-auth-{{.NodeName}}
+            name: ptp-event-publisher-auth
         {{ end }}
         - name: socket-dir
           hostPath:
