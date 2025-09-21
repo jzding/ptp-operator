@@ -63,7 +63,7 @@ data:
     {
       "enableMTLS": true,
       "useServiceCA": true,
-      "caCertPath": "/etc/cloud-event-proxy/ca-bundle/service-ca.crt",
+      "caCertPath": "/etc/cloud-event-proxy/ca-bundle/tls.crt",
       "serverCertPath": "/etc/cloud-event-proxy/server-certs/tls.crt",
       "serverKeyPath": "/etc/cloud-event-proxy/server-certs/tls.key",
       "enableOAuth": true,

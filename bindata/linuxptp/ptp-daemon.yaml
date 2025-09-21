@@ -35,7 +35,7 @@ spec:
       containers:
         {{ if (eq .EnableEventPublisher true) }}
         - name: cloud-event-proxy
-          image: {{ .SideCar }}
+          image: quay.io/jacding/cloud-event-proxy:4.21
           imagePullPolicy: Always
           args:
             - "--metrics-addr=127.0.0.1:9091"
@@ -114,7 +114,7 @@ spec:
           args:
           {{ $cmd := "/usr/local/bin/ptp --alsologtostderr -v 10" }}
           {{- if (eq .EnableEventPublisher true) }}
-            - "until [ $(curl -s -w '%{http_code}' 'https://localhost:9043/api/ocloudNotifications/v2/health' --cacert /etc/cloud-event-proxy/ca-bundle/ca.crt -o /dev/null) -eq 200 ]; do echo 'waiting for cloud event proxy to start'; sleep 10s; done; {{ $cmd }}"
+            - "until [ $(curl -s -w '%{http_code}' 'https://localhost:9043/api/ocloudNotifications/v2/health' --cacert /etc/cloud-event-proxy/ca-bundle/tls.crt -o /dev/null) -eq 200 ]; do echo 'waiting for cloud event proxy to start'; sleep 10s; done; {{ $cmd }}"
           {{- else }}
             - {{ $cmd }}
           {{- end }}
