@@ -166,7 +166,7 @@ spec:
           emptyDir: {}
         - name: server-certs
           secret:
-            secretName: cloud-event-proxy-mtls-tls
+            secretName: ptp-event-publisher-certs-{{.NodeName}}
         - name: ca-bundle
           secret:
             secretName: cloud-event-proxy-ca-tls

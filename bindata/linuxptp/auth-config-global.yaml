@@ -18,25 +18,6 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  name: cloud-event-proxy-mtls
-  namespace: openshift-ptp
-  annotations:
-    service.beta.openshift.io/serving-cert-secret-name: cloud-event-proxy-mtls-tls
-  labels:
-    app: linuxptp-daemon
-spec:
-  clusterIP: None
-  selector:
-    app: linuxptp-daemon
-  ports:
-    - name: mtls-port
-      port: 9043
-  sessionAffinity: None
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
   name: cloud-event-proxy-ca
   namespace: openshift-ptp
   annotations:
