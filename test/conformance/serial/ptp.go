@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -561,26 +562,14 @@ var _ = Describe("["+strings.ToLower(DesiredMode.String())+"-serial]", Serial, f
 					// Delete if already exists
 					client.Client.Secrets(pkg.PtpLinuxDaemonNamespace).Delete(
 						context.Background(),
-						"ptp-security-mismatch",
+						pkg.PtpSecurityMismatchSecretName,
 						metav1.DeleteOptions{},
 					)
 					time.Sleep(2 * time.Second)
 
 					// Create secret with spp 0 but DIFFERENT KEYS than ptp-security-conf
 					// GM signs with these keys, BC has different keys for spp 0 → signature mismatch
-					mismatchSecret := &v1core.Secret{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:      "ptp-security-mismatch",
-							Namespace: pkg.PtpLinuxDaemonNamespace,
-						},
-						StringData: map[string]string{
-							"ptp-security.conf": `[security_association]
-spp 0
-1 AES128 HEX:0000000000000000000000000000000000000000000000000000000000000000
-2 SHA256-128 HEX:FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
-`,
-						},
-					}
+					mismatchSecret := testconfig.CreateSecurityMismatchSecret(pkg.PtpLinuxDaemonNamespace)
 
 					_, err := client.Client.Secrets(pkg.PtpLinuxDaemonNamespace).Create(
 						context.Background(),
@@ -687,7 +676,7 @@ spp 0
 					// Delete mismatch secret
 					client.Client.Secrets(pkg.PtpLinuxDaemonNamespace).Delete(
 						context.Background(),
-						"ptp-security-mismatch",
+						pkg.PtpSecurityMismatchSecretName,
 						metav1.DeleteOptions{},
 					)
 
@@ -1145,6 +1134,191 @@ spp 0
 				}, pkg.TimeoutIn5Minutes, 5*time.Second).Should(ContainSubstring(metrics.OpenshiftPtpThreshold),
 					"Threshold metrics are not detected")
 			})
+
+			Context("Event API version validation", func() {
+				BeforeEach(func() {
+					if !ptphelper.IsOCPVersionAtLeast("4.19") {
+						Skip("Skipping: these tests require OCP version 4.19 or higher")
+					}
+				})
+
+				// Verify cloud-event-proxy defaults to v2 when apiVersion is not set
+				It("Should default to event API v2 when apiVersion is not explicitly set in PtpOperatorConfig", func() {
+					By("Verifying apiVersion is not explicitly set in PtpOperatorConfig")
+					ptpOperatorConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(
+						context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred())
+
+					// Skip if apiVersion is explicitly set - this test is for default behavior
+					if ptpOperatorConfig.Spec.EventConfig != nil && ptpOperatorConfig.Spec.EventConfig.ApiVersion != "" {
+						Skip(fmt.Sprintf("apiVersion is explicitly set to '%s', skipping default test",
+							ptpOperatorConfig.Spec.EventConfig.ApiVersion))
+					}
+
+					By("Checking cloud-event-proxy logs for v2 API config on all pods")
+					for _, pod := range ptpPods.Items {
+						// Verify cloud-event-proxy container exists
+						cloudProxyFound := false
+						for _, c := range pod.Spec.Containers {
+							if c.Name == pkg.EventProxyContainerName {
+								cloudProxyFound = true
+							}
+						}
+						Expect(cloudProxyFound).ToNot(BeFalse(),
+							fmt.Sprintf("No cloud-event-proxy container in pod %s", pod.Name))
+
+						logrus.Infof("Checking cloud-event-proxy logs on pod %s (node: %s)", pod.Name, pod.Spec.NodeName)
+
+						// Search for "starting v2 rest api server at port" in pod logs (literal text search)
+						matches, err := pods.GetPodLogsRegex(
+							pod.Namespace,
+							pod.Name,
+							pkg.EventProxyContainerName,
+							`starting v2 rest api server at port`,
+							true,
+							30*time.Second,
+						)
+						Expect(err).NotTo(HaveOccurred(),
+							fmt.Sprintf("Failed to get logs from pod %s", pod.Name))
+						Expect(matches).NotTo(BeEmpty(),
+							fmt.Sprintf("No 'starting v2 rest api server at port' found in cloud-event-proxy logs on pod %s", pod.Name))
+
+						logrus.Infof("Pod %s: found 'starting v2 rest api server at port' in logs", pod.Name)
+					}
+				})
+
+				// Verify cloud-event-proxy runs v2 when apiVersion is explicitly set to "2.0"
+				It("Should run event API v2 when apiVersion is explicitly set to 2.0 in PtpOperatorConfig", func() {
+					By("Setting apiVersion to 2.0 in PtpOperatorConfig")
+					err := ptphelper.EnablePTPEvent("2.0", "")
+					Expect(err).NotTo(HaveOccurred(), "Failed to set apiVersion to 2.0")
+
+					By("Verifying apiVersion is set to 2.0 in PtpOperatorConfig")
+					ptpOperatorConfig, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(
+						context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
+					Expect(err).NotTo(HaveOccurred())
+					Expect(ptpOperatorConfig.Spec.EventConfig).NotTo(BeNil(), "EventConfig should not be nil")
+					Expect(ptpOperatorConfig.Spec.EventConfig.ApiVersion).To(Equal("2.0"),
+						"apiVersion should be explicitly set to 2.0")
+
+					// Wait for operator to process config change
+					time.Sleep(5 * time.Second)
+
+					By("Waiting for daemonset to be ready and refreshing pods list")
+					ptphelper.WaitForPtpDaemonToExist()
+					fullConfig = testconfig.GetFullDiscoveredConfig(pkg.PtpLinuxDaemonNamespace, true)
+					podsRunningPTP4l, err := testconfig.GetPodsRunningPTP4l(&fullConfig)
+					Expect(err).NotTo(HaveOccurred())
+					ptphelper.WaitForPtpDaemonToBeReady(podsRunningPTP4l)
+
+					ptpPods, err = client.Client.CoreV1().Pods(pkg.PtpLinuxDaemonNamespace).List(
+						context.Background(), metav1.ListOptions{LabelSelector: "app=linuxptp-daemon"})
+					Expect(err).NotTo(HaveOccurred())
+					Expect(len(ptpPods.Items)).To(BeNumerically(">", 0), "linuxptp-daemon is not deployed on cluster")
+
+					By("Checking cloud-event-proxy logs for v2 API config on all pods")
+					for _, pod := range ptpPods.Items {
+						// Verify cloud-event-proxy container exists
+						cloudProxyFound := false
+						for _, c := range pod.Spec.Containers {
+							if c.Name == pkg.EventProxyContainerName {
+								cloudProxyFound = true
+							}
+						}
+						Expect(cloudProxyFound).ToNot(BeFalse(),
+							fmt.Sprintf("No cloud-event-proxy container in pod %s", pod.Name))
+
+						logrus.Infof("Checking cloud-event-proxy logs on pod %s (node: %s)", pod.Name, pod.Spec.NodeName)
+
+						// Search for REST API config v2.0 in pod logs (literal text search)
+						matches, err := pods.GetPodLogsRegex(
+							pod.Namespace,
+							pod.Name,
+							pkg.EventProxyContainerName,
+							`starting v2 rest api server at port`,
+							true,
+							30*time.Second,
+						)
+						Expect(err).NotTo(HaveOccurred(),
+							fmt.Sprintf("Failed to get logs from pod %s", pod.Name))
+						Expect(matches).NotTo(BeEmpty(),
+							fmt.Sprintf("No 'starting v2 rest api server at port' found in cloud-event-proxy logs on pod %s", pod.Name))
+
+						logrus.Infof("Pod %s: found 'starting v2 rest api server at port' in logs", pod.Name)
+					}
+				})
+				// Verify invalid apiVersion values are rejected and pods are not restarted
+				It("Should reject invalid apiVersion and not restart pods", func() {
+					testCases := []struct {
+						name                   string
+						invalidVersion         string
+						expectedErrorSubstring string
+					}{
+						{"v1 (deprecated/EOL)", "1.0", "v1 is no longer supported"},
+						{"invalid version 'boo'", "boo", "is not a valid version"},
+					}
+
+					for _, tc := range testCases {
+						By(fmt.Sprintf("Testing: %s", tc.name))
+
+						By("Recording current pod UIDs and container count")
+						originalPodUIDs := make(map[string]string)
+						originalContainerCounts := make(map[string]int)
+						for _, pod := range ptpPods.Items {
+							originalPodUIDs[pod.Name] = string(pod.UID)
+							originalContainerCounts[pod.Name] = len(pod.Spec.Containers)
+							logrus.Infof("Pod %s: UID=%s, containers=%d", pod.Name, pod.UID, len(pod.Spec.Containers))
+						}
+
+						By("Recording current apiVersion in PtpOperatorConfig")
+						ptpOperatorConfigBefore, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(
+							context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
+						Expect(err).NotTo(HaveOccurred())
+						originalApiVersion := ""
+						if ptpOperatorConfigBefore.Spec.EventConfig != nil {
+							originalApiVersion = ptpOperatorConfigBefore.Spec.EventConfig.ApiVersion
+						}
+						logrus.Infof("Original apiVersion: '%s'", originalApiVersion)
+
+						By(fmt.Sprintf("Attempting to set apiVersion to '%s' (should be rejected)", tc.invalidVersion))
+						err = ptphelper.EnablePTPEvent(tc.invalidVersion, "")
+						Expect(err).To(HaveOccurred(),
+							fmt.Sprintf("Setting apiVersion to '%s' should have been rejected", tc.invalidVersion))
+						Expect(err.Error()).To(ContainSubstring(tc.expectedErrorSubstring),
+							"Error should contain expected message")
+						logrus.Infof("Received expected rejection error: %s", err.Error())
+
+						By("Verifying PtpOperatorConfig was not changed")
+						ptpOperatorConfigAfter, err := client.Client.PtpV1Interface.PtpOperatorConfigs(pkg.PtpLinuxDaemonNamespace).Get(
+							context.Background(), pkg.PtpConfigOperatorName, metav1.GetOptions{})
+						Expect(err).NotTo(HaveOccurred())
+						afterApiVersion := ""
+						if ptpOperatorConfigAfter.Spec.EventConfig != nil {
+							afterApiVersion = ptpOperatorConfigAfter.Spec.EventConfig.ApiVersion
+						}
+						Expect(afterApiVersion).To(Equal(originalApiVersion),
+							"apiVersion should not have changed after rejected update")
+
+						By("Verifying pods were not restarted (same UIDs and container count)")
+						currentPods, err := client.Client.CoreV1().Pods(pkg.PtpLinuxDaemonNamespace).List(
+							context.Background(), metav1.ListOptions{LabelSelector: "app=linuxptp-daemon"})
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(currentPods.Items)).To(Equal(len(ptpPods.Items)),
+							"Number of pods should remain the same")
+
+						for _, pod := range currentPods.Items {
+							originalUID, exists := originalPodUIDs[pod.Name]
+							Expect(exists).To(BeTrue(),
+								fmt.Sprintf("Pod %s should still exist", pod.Name))
+							Expect(string(pod.UID)).To(Equal(originalUID),
+								fmt.Sprintf("Pod %s should have same UID (no restart)", pod.Name))
+							Expect(len(pod.Spec.Containers)).To(Equal(originalContainerCounts[pod.Name]),
+								fmt.Sprintf("Pod %s should have same number of containers", pod.Name))
+							logrus.Infof("Pod %s: UID unchanged (%s), containers=%d", pod.Name, pod.UID, len(pod.Spec.Containers))
+						}
+					}
+				})
+			})
 		})
 
 		Context("Running with event enabled, v1 regression", func() {
@@ -1269,7 +1443,7 @@ spp 0
 							ptpPods.Items[podIndex].Name, pkg.PtpContainerName,
 							pluginLog, true, pkg.TimeoutIn3Minutes)
 						if err != nil {
-							logrus.Errorf(fmt.Sprintf("Reference plugin not loaded, err=%s", err))
+							logrus.Errorf("Reference plugin not loaded, err=%s", err)
 							continue
 						}
 						foundMatch = true
@@ -1316,7 +1490,7 @@ spp 0
 							ptpPods.Items[podIndex].Name, pkg.PtpContainerName,
 							pluginLog, true, pkg.TimeoutIn3Minutes)
 						if err != nil {
-							logrus.Errorf(fmt.Sprintf("Reference plugin not running OnPTPConfigChangeGeneric, err=%s", err))
+							logrus.Errorf("Reference plugin not running OnPTPConfigChangeGeneric, err=%s", err)
 							continue
 						}
 						foundMatch = true
@@ -1370,14 +1544,14 @@ spp 0
 							ptpPods.Items[podIndex].Name, pkg.PtpContainerName,
 							profileName, true, pkg.TimeoutIn3Minutes)
 						if err != nil {
-							logrus.Errorf(fmt.Sprintf("error getting profile=%s, err=%s ", name, err))
+							logrus.Errorf("error getting profile=%s, err=%s ", name, err)
 							continue
 						}
 						_, err = pods.GetPodLogsRegex(ptpPods.Items[podIndex].Namespace,
 							ptpPods.Items[podIndex].Name, pkg.PtpContainerName,
 							ptp4lLog, true, pkg.TimeoutIn3Minutes)
 						if err != nil {
-							logrus.Errorf(fmt.Sprintf("error getting ptp4l chrt line=%s, err=%s ", ptp4lLog, err))
+							logrus.Errorf("error getting ptp4l chrt line=%s, err=%s ", ptp4lLog, err)
 							continue
 						}
 						delete(fifoPriorities, name)
@@ -2062,6 +2236,164 @@ spp 0
 				By("Verifying PTP state Locked")
 				verifyEvent(events[ptpEvent.PtpStateChange], ptpEvent.LOCKED)
 
+			})
+		})
+
+		It("Should properly cleanup volumeMounts when secrets are deleted and remount when recreated", func() {
+			ptpOperatorVersion, err := ptphelper.GetPtpOperatorVersion()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(ptpOperatorVersion).ShouldNot(BeEmpty())
+			operatorVersion, _ := semver.NewVersion(ptpOperatorVersion)
+			haVersion, _ := semver.NewVersion("4.22")
+			if operatorVersion.LessThan(haVersion) {
+				Skip("Skipping volumeMount cleanup test - requires OCP 4.22+")
+			}
+			var testNode string
+			var testInterface string
+			var testPtpConfig *ptpv1.PtpConfig
+			var testSecret *v1core.Secret
+
+			By("Getting discovered config with PTP interfaces", func() {
+				fullConfig = testconfig.GetFullDiscoveredConfig(pkg.PtpLinuxDaemonNamespace, true)
+				if fullConfig.Status != testconfig.DiscoverySuccessStatus {
+					Skip("Failed to find a valid ptp configuration")
+				}
+
+				// Get interfaces from L2 config
+				ptpInterfaces := fullConfig.L2Config.GetPtpIfList()
+				Expect(len(ptpInterfaces)).To(BeNumerically(">", 0), "No PTP interfaces found")
+
+				testInterface = ptpInterfaces[0].IfName
+				testNode = ptpInterfaces[0].NodeName
+				fmt.Fprintf(GinkgoWriter, "Using test node: %s, interface: %s\n", testNode, testInterface)
+			})
+
+			By("Creating test secret", func() {
+				testSecret = testconfig.CreateTestSecretForVolumeMountTest(pkg.PtpLinuxDaemonNamespace)
+				_, err := client.Client.Secrets(pkg.PtpLinuxDaemonNamespace).Create(
+					context.Background(),
+					testSecret,
+					metav1.CreateOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+				fmt.Fprintf(GinkgoWriter, "Created test secret: %s\n", testSecret.Name)
+			})
+
+			By("Creating PtpConfig with sa_file referencing the test secret", func() {
+				testPtpConfig = testconfig.CreatePtpConfigForVolumeMountTest(testNode, testInterface)
+				_, err := client.Client.PtpConfigs(pkg.PtpLinuxDaemonNamespace).Create(
+					context.Background(),
+					testPtpConfig,
+					metav1.CreateOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+				fmt.Fprintf(GinkgoWriter, "Created test PtpConfig: %s\n", testPtpConfig.Name)
+
+				// Wait for reconciliation to complete
+				time.Sleep(10 * time.Second)
+			})
+
+			By("Verifying secret volume is mounted in DaemonSet", func() {
+				ds, err := client.Client.DaemonSets(pkg.PtpLinuxDaemonNamespace).Get(
+					context.Background(),
+					"linuxptp-daemon",
+					metav1.GetOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Check for volume with -tlv-auth suffix
+				volumeName := "ptp-test-volume-secret-tlv-auth"
+				volumeFound := false
+				for _, vol := range ds.Spec.Template.Spec.Volumes {
+					if vol.Name == volumeName {
+						volumeFound = true
+						Expect(vol.Secret).NotTo(BeNil())
+						Expect(vol.Secret.SecretName).To(Equal("ptp-test-volume-secret"))
+						fmt.Fprintf(GinkgoWriter, "Found volume: %s referencing secret: %s\n", vol.Name, vol.Secret.SecretName)
+						break
+					}
+				}
+				Expect(volumeFound).To(BeTrue(), "Volume for test secret not found in DaemonSet")
+
+				// Check for volumeMount in linuxptp-daemon-container
+				mountFound := false
+				for _, container := range ds.Spec.Template.Spec.Containers {
+					if container.Name == "linuxptp-daemon-container" {
+						for _, mount := range container.VolumeMounts {
+							if mount.Name == volumeName {
+								mountFound = true
+								Expect(mount.MountPath).To(Equal("/etc/ptp-secret-mount/ptp-test-volume-secret"))
+								Expect(mount.ReadOnly).To(BeTrue())
+								fmt.Fprintf(GinkgoWriter, "Found volumeMount: %s at path: %s\n", mount.Name, mount.MountPath)
+								break
+							}
+						}
+						break
+					}
+				}
+				Expect(mountFound).To(BeTrue(), "VolumeMount for test secret not found in DaemonSet container")
+			})
+
+			By("Deleting the test secret", func() {
+				err := client.Client.Secrets(pkg.PtpLinuxDaemonNamespace).Delete(
+					context.Background(),
+					testSecret.Name,
+					metav1.DeleteOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+				fmt.Fprintf(GinkgoWriter, "Deleted test secret: %s\n", testSecret.Name)
+
+				// Wait for reconciliation to process the deletion
+				time.Sleep(15 * time.Second)
+			})
+
+			By("Verifying secret volume is removed from DaemonSet", func() {
+				ds, err := client.Client.DaemonSets(pkg.PtpLinuxDaemonNamespace).Get(
+					context.Background(),
+					"linuxptp-daemon",
+					metav1.GetOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Check that volume is removed
+				volumeName := "ptp-test-volume-secret-tlv-auth"
+				volumeFound := false
+				for _, vol := range ds.Spec.Template.Spec.Volumes {
+					if vol.Name == volumeName {
+						volumeFound = true
+						break
+					}
+				}
+				Expect(volumeFound).To(BeFalse(), "Volume for test secret still found in DaemonSet after deletion")
+
+				// Check that volumeMount is removed
+				mountFound := false
+				for _, container := range ds.Spec.Template.Spec.Containers {
+					if container.Name == "linuxptp-daemon-container" {
+						for _, mount := range container.VolumeMounts {
+							if mount.Name == volumeName {
+								mountFound = true
+								break
+							}
+						}
+						break
+					}
+				}
+				Expect(mountFound).To(BeFalse(), "VolumeMount for test secret still found in DaemonSet after deletion")
+				fmt.Fprintf(GinkgoWriter, "Verified: Volume and VolumeMount removed after secret deletion\n")
+			})
+
+			By("Cleaning up test PtpConfig", func() {
+				err := client.Client.PtpConfigs(pkg.PtpLinuxDaemonNamespace).Delete(
+					context.Background(),
+					testPtpConfig.Name,
+					metav1.DeleteOptions{},
+				)
+				Expect(err).NotTo(HaveOccurred())
+				fmt.Fprintf(GinkgoWriter, "Deleted test PtpConfig: %s\n", testPtpConfig.Name)
+
+				// Wait for cleanup
+				time.Sleep(5 * time.Second)
 			})
 		})
 	})

@@ -9,7 +9,7 @@ endif
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 4.21
+VERSION ?= 4.22
 
 # CHANNELS define the bundle channels used in the bundle. 
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -53,6 +53,21 @@ OPERATOR_SDK_VERSION ?= v1.36.1-ocp
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/openshift/origin-ptp-operator:$(VERSION)
+
+# KUBECONFIG defines the kubeconfig file to use for the install, uninstall, deploy and undeploy targets.
+ifneq ($(origin KUBECONFIG), undefined)
+KUBECONFIG_OPTS := --kubeconfig=$(KUBECONFIG)
+endif
+
+#ARCH defines the architecture to use for the docker-build target.
+ARCH ?= $(shell uname -m)
+ifeq ($(ARCH),x86_64)
+BUILDARCH ?= --arch=amd64
+endif
+ifeq ($(ARCH),aarch64)
+BUILDARCH := --arch=arm64
+endif
+
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -128,7 +143,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
 docker-build: #test ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build $(BUILDARCH) -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
@@ -136,19 +151,20 @@ docker-push: ## Push docker image with the manager.
 ##@ Deployment
 
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | kubectl $(KUBECONFIG_OPTS) apply -f -
 
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/crd | kubectl delete -f -
+	$(KUSTOMIZE) build config/crd | kubectl $(KUBECONFIG_OPTS) delete -f - || true
 
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy: manifests kustomize update-env-yaml ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | kubectl apply -f -
-	$(KUSTOMIZE) build config/custom | kubectl apply -f -
+	$(KUSTOMIZE) build config/default | kubectl $(KUBECONFIG_OPTS) apply -f -
+	$(KUSTOMIZE) build config/custom | kubectl $(KUBECONFIG_OPTS) apply -f -
+	@$(MAKE) restore-env-yaml
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/default | kubectl delete -f -
-	$(KUSTOMIZE) build config/custom | kubectl delete -f -
+	$(KUSTOMIZE) build config/default | kubectl $(KUBECONFIG_OPTS) delete -f - || true
+	$(KUSTOMIZE) build config/custom | kubectl $(KUBECONFIG_OPTS) delete -f - || true
 
 ##@ Build Dependencies
 
@@ -196,8 +212,36 @@ else
 endif
 endif
 
+ENV_YAML_BACKUP := config/manager/env.yaml.bak
+
+.PHONY: update-env-yaml
+update-env-yaml: ## Update config/manager/env.yaml with image variables if provided (creates backup)
+	@if [ -n "$(LINUXPTP_DAEMON_IMAGE)$(KUBE_RBAC_PROXY_IMAGE)$(SIDECAR_EVENT_IMAGE)" ]; then \
+		cp config/manager/env.yaml $(ENV_YAML_BACKUP); \
+		if [ -n "$(LINUXPTP_DAEMON_IMAGE)" ]; then \
+			if [ "$(OS)" = "Darwin" ]; then \
+				sed -i '' '/- name: LINUXPTP_DAEMON_IMAGE$$/,/value:/s|value: ".*"|value: "$(LINUXPTP_DAEMON_IMAGE)"|' config/manager/env.yaml; \
+			else \
+				sed -i '/- name: LINUXPTP_DAEMON_IMAGE$$/,/value:/s|value: ".*"|value: "$(LINUXPTP_DAEMON_IMAGE)"|' config/manager/env.yaml; \
+			fi; \
+		fi; \
+		if [ -n "$(SIDECAR_EVENT_IMAGE)" ]; then \
+			if [ "$(OS)" = "Darwin" ]; then \
+				sed -i '' '/- name: SIDECAR_EVENT_IMAGE$$/,/value:/s|value: ".*"|value: "$(SIDECAR_EVENT_IMAGE)"|' config/manager/env.yaml; \
+			else \
+				sed -i '/- name: SIDECAR_EVENT_IMAGE$$/,/value:/s|value: ".*"|value: "$(SIDECAR_EVENT_IMAGE)"|' config/manager/env.yaml; \
+			fi; \
+		fi; \
+	fi
+
+.PHONY: restore-env-yaml
+restore-env-yaml: ## Restore config/manager/env.yaml from backup
+	@if [ -f $(ENV_YAML_BACKUP) ]; then \
+		mv $(ENV_YAML_BACKUP) config/manager/env.yaml; \
+	fi
+
 .PHONY: bundle
-bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
+bundle: manifests kustomize operator-sdk update-env-yaml ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests --interactive=false -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
@@ -210,6 +254,7 @@ ifeq ($(OS), Darwin)
 else
 	find . -type f -name "*.clusterserviceversion.yaml" -print0 | xargs -0 sed -i '/olm.skipRange:/s#'\''#"#g'
 endif
+	@$(MAKE) restore-env-yaml
 
 .PHONY: bundle-build ## Build the bundle image.
 bundle-build:
@@ -285,11 +330,13 @@ channel: $(CATALOG_DEFAULT_CHANNEL)
 name: $(CATALOG_DEFAULT_CHANNEL)
 entries:
   - name: ptp-operator.v$(BUNDLE_VERSION)
-    replaces: ptp-operator.v4.20.0
+    skipRange: ">=4.3.0-0 <$(BUNDLE_VERSION)"
 endef
 
 .PHONY: catalog/channel.yaml
 catalog/channel.yaml:
+	$(eval BUNDLE_VERSION := $(shell yq <catalog/operator.yaml '.properties | map(select(.type == "olm.package"))[0].value.version'))
+	@echo "Detected bundle version $(BUNDLE_VERSION) from catalog/operator.yaml; Setting channel to match"
 	$(file > $@,$(CHANNEL_TEMPLATE))
 
 .PHONY: catalog.Dockerfile
