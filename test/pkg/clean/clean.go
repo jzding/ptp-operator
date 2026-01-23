@@ -29,6 +29,7 @@ func DeleteLabel(label string) error {
 // All removes any configuration applied by ptp tests.
 func All() error {
 	Configs()
+	Secrets()
 
 	err := DeleteLabel(pkg.PtpGrandmasterNodeLabel)
 	if err != nil {
@@ -64,11 +65,27 @@ func Configs() {
 			ptpConfig.Name == pkg.PtpBcMaster2PolicyName ||
 			ptpConfig.Name == pkg.PtpSlave2PolicyName ||
 			ptpConfig.Name == pkg.PtpTempPolicyName ||
-			ptpConfig.Name == pkg.PtpDualNicBCHAPolicyName {
+			ptpConfig.Name == pkg.PtpDualNicBCHAPolicyName ||
+			ptpConfig.Name == pkg.PtpVolumeMountCleanPolicyName {
 			err = client.Client.PtpConfigs(pkg.PtpLinuxDaemonNamespace).Delete(context.Background(), ptpConfig.Name, metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Infof("clean.All: Failed to delete ptp config %s %v", ptpConfig.Name, err)
 			}
+		}
+	}
+}
+
+// Secrets removes any test secrets created by ptp tests.
+func Secrets() {
+	testSecrets := []string{
+		pkg.PtpTestVolumeSecretName,
+		pkg.PtpSecurityMismatchSecretName,
+	}
+
+	for _, secretName := range testSecrets {
+		err := client.Client.CoreV1().Secrets(pkg.PtpLinuxDaemonNamespace).Delete(context.Background(), secretName, metav1.DeleteOptions{})
+		if err != nil {
+			logrus.Infof("clean.Secrets: Failed to delete secret %s (may not exist): %v", secretName, err)
 		}
 	}
 }

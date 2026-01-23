@@ -383,12 +383,12 @@ func ReplaceTestPod(pod *v1core.Pod, timeout time.Duration) (v1core.Pod, error) 
 }
 
 func RestartPTPDaemon() {
-	ptpPods, err := client.Client.CoreV1().Pods(pkg.PtpLinuxDaemonNamespace).List(context.Background(), metav1.ListOptions{LabelSelector: "app=linuxptp-daemon"})
+	err := client.Client.CoreV1().Pods(pkg.PtpLinuxDaemonNamespace).DeleteCollection(
+		context.Background(),
+		metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64Ptr(0)},
+		metav1.ListOptions{LabelSelector: pkg.PtpLinuxDaemonPodsLabel},
+	)
 	Expect(err).ToNot(HaveOccurred())
-	for podIndex := range ptpPods.Items {
-		err = client.Client.CoreV1().Pods(pkg.PtpLinuxDaemonNamespace).Delete(context.Background(), ptpPods.Items[podIndex].Name, metav1.DeleteOptions{GracePeriodSeconds: pointer.Int64Ptr(0)})
-		Expect(err).ToNot(HaveOccurred())
-	}
 
 	WaitForPtpDaemonToExist()
 }
@@ -982,4 +982,28 @@ func GetOCPVersion() (ocpVersion string, err error) {
 		}
 	}
 	return ocpVersion, err
+}
+
+// IsOCPVersionAtLeast checks if the OCP version is >= the specified minimum version
+// Returns true if version cannot be determined (to allow tests to run)
+func IsOCPVersionAtLeast(minVersion string) bool {
+	ocpVersion, err := GetOCPVersion()
+	if err != nil {
+		logrus.Infof("Could not get OCP version, assuming version check passes: %v", err)
+		return true
+	}
+
+	ver, err := semver.NewVersion(ocpVersion)
+	if err != nil {
+		logrus.Infof("Could not parse OCP version %s, assuming version check passes: %v", ocpVersion, err)
+		return true
+	}
+
+	minVer, err := semver.NewVersion(minVersion)
+	if err != nil {
+		logrus.Infof("Could not parse min version %s, assuming version check passes: %v", minVersion, err)
+		return true
+	}
+
+	return !ver.LessThan(minVer)
 }

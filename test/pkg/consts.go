@@ -26,15 +26,20 @@ const (
 	EventProxyContainerName         = "cloud-event-proxy"
 
 	// policy name
-	PtpGrandMasterPolicyName    = "test-grandmaster"
-	PtpWPCGrandMasterPolicyName = "test-wpc-grandmaster"
-	PtpBcMaster1PolicyName      = "test-bc-master1"
-	PtpSlave1PolicyName         = "test-slave1"
-	PtpBcMaster2PolicyName      = "test-bc-master2"
-	PtpSlave2PolicyName         = "test-slave2"
-	PtpDualNicBCHAPolicyName    = "test-dual-nic-bc-ha"
-	PtpTempPolicyName           = "temp"
-	PtpUnderscoreTestPolicyName = "test-underscore-profile"
+	PtpGrandMasterPolicyName      = "test-grandmaster"
+	PtpWPCGrandMasterPolicyName   = "test-wpc-grandmaster"
+	PtpBcMaster1PolicyName        = "test-bc-master1"
+	PtpSlave1PolicyName           = "test-slave1"
+	PtpBcMaster2PolicyName        = "test-bc-master2"
+	PtpSlave2PolicyName           = "test-slave2"
+	PtpDualNicBCHAPolicyName      = "test-dual-nic-bc-ha"
+	PtpTempPolicyName             = "temp"
+	PtpUnderscoreTestPolicyName   = "test-underscore-profile"
+	PtpVolumeMountCleanPolicyName = "test-volume-mount-cleanup"
+
+	// test secret names
+	PtpTestVolumeSecretName       = "ptp-test-volume-secret"
+	PtpSecurityMismatchSecretName = "ptp-security-mismatch"
 
 	// node labels
 	PtpGrandmasterNodeLabel    = "ptp/test-grandmaster"
