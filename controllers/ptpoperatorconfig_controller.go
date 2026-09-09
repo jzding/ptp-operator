@@ -267,6 +267,9 @@ func (r *PtpOperatorConfigReconciler) syncLinuxptpDaemon(ctx context.Context, de
 	data.Data["NodeName"] = os.Getenv("NODE_NAME")
 	data.Data["StorageType"] = DefaultStorageType
 	data.Data["EventApiVersion"] = DefaultApiVersion
+	// EnableEventAuth turns on mTLS and bearer-token authentication on the
+	// event publisher APIs. It remains opt-in for clusters without Service CA.
+	data.Data["EnableEventAuth"] = os.Getenv("ENABLE_EVENT_AUTH") == "true"
 	// configure EventConfig
 	transportHost := ""
 	if defaultCfg.Spec.EventConfig == nil {
@@ -323,6 +326,20 @@ func (r *PtpOperatorConfigReconciler) syncLinuxptpDaemon(ctx context.Context, de
 		}
 		if err = apply.ApplyObject(ctxWithSource, r.Client, obj); err != nil {
 			return fmt.Errorf("failed to apply object %v with err: %v", obj, err)
+		}
+	}
+
+	// Authentication resources are shared by the always-deployed event proxy
+	// and are rendered once rather than once per node.
+	if data.Data["EnableEventAuth"] == true {
+		authObjs, renderErr := render.RenderTemplate(filepath.Join(names.ManifestDir, "linuxptp/auth-config.yaml"), &data)
+		if renderErr != nil {
+			return fmt.Errorf("failed to render event auth-config manifest: %v", renderErr)
+		}
+		for _, obj := range authObjs {
+			if err = apply.ApplyObject(ctx, r.Client, obj); err != nil {
+				return fmt.Errorf("failed to apply auth-config object %v with err: %v", obj, err)
+			}
 		}
 	}
 
@@ -534,6 +551,7 @@ func (r *PtpOperatorConfigReconciler) setTLSTemplateData(data *render.RenderData
 		ianaCiphers := libgocrypto.OpenSSLToIANACipherSuites(r.TLSProfileSpec.Ciphers)
 		data.Data["TLSMinVersion"] = string(r.TLSProfileSpec.MinTLSVersion)
 		data.Data["TLSCipherSuites"] = strings.Join(ianaCiphers, ",")
+		data.Data["TLSCipherSuitesJSON"] = ciphersToJSONArray(ianaCiphers)
 
 		curveIDs, _ := libgocrypto.TLSGroupsToCurveIDs(r.TLSProfileSpec.Groups)
 		groups := make([]string, len(curveIDs))
@@ -544,8 +562,22 @@ func (r *PtpOperatorConfigReconciler) setTLSTemplateData(data *render.RenderData
 	} else {
 		data.Data["TLSMinVersion"] = ""
 		data.Data["TLSCipherSuites"] = legacyCipherSuites
+		data.Data["TLSCipherSuitesJSON"] = ciphersToJSONArray(strings.Split(legacyCipherSuites, ","))
 		data.Data["TLSGroups"] = ""
 	}
+}
+
+// ciphersToJSONArray renders IANA cipher-suite names as a JSON array literal
+// for embedding in the cloud-event-proxy authentication configuration.
+func ciphersToJSONArray(ciphers []string) string {
+	quoted := make([]string, 0, len(ciphers))
+	for _, cipher := range ciphers {
+		cipher = strings.TrimSpace(cipher)
+		if cipher != "" {
+			quoted = append(quoted, fmt.Sprintf("%q", cipher))
+		}
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 func (r *PtpOperatorConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
