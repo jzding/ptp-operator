@@ -331,16 +331,9 @@ func (r *PtpOperatorConfigReconciler) syncLinuxptpDaemon(ctx context.Context, de
 
 	// Authentication resources are shared by the always-deployed event proxy
 	// and are rendered once rather than once per node.
-	if data.Data["EnableEventAuth"] == true {
-		authObjs, renderErr := render.RenderTemplate(filepath.Join(names.ManifestDir, "linuxptp/auth-config.yaml"), &data)
-		if renderErr != nil {
-			return fmt.Errorf("failed to render event auth-config manifest: %v", renderErr)
-		}
-		for _, obj := range authObjs {
-			if err = apply.ApplyObject(ctx, r.Client, obj); err != nil {
-				return fmt.Errorf("failed to apply auth-config object %v with err: %v", obj, err)
-			}
-		}
+	authEnabled := data.Data["EnableEventAuth"] == true
+	if err = r.syncEventAuth(ctx, &data, authEnabled); err != nil {
+		return err
 	}
 
 	for _, node := range nodeList.Items {
@@ -372,6 +365,34 @@ func enabledPluginNames(defaultCfg *ptpv1.PtpOperatorConfig) string {
 
 	sort.Strings(pluginList)
 	return strings.Join(pluginList, ",")
+}
+
+// syncEventAuth reconciles the event-publisher authentication manifest (mTLS
+// serving-cert Service, injected CA bundle, auth-config ConfigMap and the
+// TokenReview ClusterRoleBinding). It renders the manifest unconditionally so
+// that when authentication is disabled, resources left over from a previously
+// enabled state are torn down. Otherwise the cluster-scoped ClusterRoleBinding
+// and serving-cert Service would be orphaned after authentication is disabled.
+func (r *PtpOperatorConfigReconciler) syncEventAuth(ctx context.Context, data *render.RenderData, enabled bool) error {
+	authObjs, err := render.RenderTemplate(filepath.Join(names.ManifestDir, "linuxptp/auth-config.yaml"), data)
+	if err != nil {
+		return fmt.Errorf("failed to render event auth-config manifest: %v", err)
+	}
+	if enabled {
+		for _, obj := range authObjs {
+			if err = apply.ApplyObject(ctx, r.Client, obj); err != nil {
+				return fmt.Errorf("failed to apply auth-config object %v with err: %v", obj, err)
+			}
+		}
+		return nil
+	}
+	for _, obj := range authObjs {
+		if err = r.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete auth-config object %s/%s with err: %v",
+				obj.GetKind(), obj.GetName(), err)
+		}
+	}
+	return nil
 }
 
 // applyNetworkPoliciesFromYaml reconciles the operand and operator NetworkPolicy
